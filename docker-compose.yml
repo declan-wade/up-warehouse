@@ -1,0 +1,14 @@
+services:
+  up-warehouse:
+    build: .
+    image: up-warehouse
+    container_name: up-warehouse
+    ports:
+      - "3000:3000"
+    # Pass UP_TOKEN (and optional SYNC_SECRET) through from .env.local.
+    env_file:
+      - .env.local
+    # Persist the DuckDB warehouse file to the host.
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

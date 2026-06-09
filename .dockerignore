@@ -1,0 +1,13 @@
+node_modules
+.next
+data
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+docker-compose.yml
+npm-debug.log*
+.DS_Store
+# Never bake secrets into the image — env is passed at runtime.
+.env*
