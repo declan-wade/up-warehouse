@@ -1,0 +1,79 @@
+name: Build & publish container image
+
+# Build a multi-arch image and publish it to the GitHub Container Registry (ghcr.io).
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }} # owner/repo — metadata-action lowercases it
+
+# Avoid wasting CI minutes on superseded pushes to the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+      packages: write # push to ghcr.io
+      id-token: write # provenance attestation (OIDC)
+      attestations: write # write the attestation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # QEMU lets the amd64 runner emulate arm64 for the multi-arch build.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Build cache shared across runs, stored in the GitHub Actions cache.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Provenance/SBOM are attached separately via attest-build-provenance,
+          # so keep build-push from also embedding its own (keeps the digest clean).
+          provenance: false
+
+      # Signed SLSA build provenance, discoverable from the package page.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
