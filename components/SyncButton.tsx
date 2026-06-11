@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { triggerSync } from "@/lib/sync/actions";
+import type { SyncRunRow } from "@/lib/sync/sync";
 
-interface SyncStatus {
-  syncing: boolean;
-  latest: {
-    status: string;
-    kind: string;
-    finished_at: string | null;
-    transactions_upserted: number | null;
-  } | null;
+interface Status {
+  status: string;
+  finished_at: string | null;
 }
 
 function timeAgo(iso: string | null): string {
@@ -26,32 +23,25 @@ function timeAgo(iso: string | null): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-export function SyncButton() {
+export function SyncButton({ initialStatus }: { initialStatus: SyncRunRow | null }) {
   const router = useRouter();
-  const [status, setStatus] = useState<SyncStatus | null>(null);
+  const [status, setStatus] = useState<Status | null>(
+    initialStatus ? { status: initialStatus.status, finished_at: initialStatus.finished_at } : null,
+  );
   const [busy, setBusy] = useState(false);
-
-  async function refreshStatus() {
-    try {
-      const res = await fetch("/api/sync", { cache: "no-store" });
-      setStatus(await res.json());
-    } catch {
-      /* ignore transient errors */
-    }
-  }
-
-  useEffect(() => {
-    refreshStatus();
-  }, []);
+  const [, startTransition] = useTransition();
 
   async function sync(kind: "incremental" | "full") {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sync?kind=${kind}`, { method: "POST" });
-      const result = await res.json();
-      await refreshStatus();
-      if (result.status !== "error") router.refresh();
-      else alert(`Sync failed: ${result.error ?? "unknown error"}`);
+      // Calls the server-side function directly — no fetch, no auth header.
+      const result = await triggerSync(kind);
+      setStatus({ status: result.status, finished_at: new Date().toISOString() });
+      if (result.status === "error") {
+        alert(`Sync failed: ${result.error ?? "unknown error"}`);
+      } else {
+        startTransition(() => router.refresh());
+      }
     } catch (e) {
       alert(`Sync request failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -59,17 +49,16 @@ export function SyncButton() {
     }
   }
 
-  const latest = status?.latest;
   const last =
-    latest?.status === "error"
+    status?.status === "error"
       ? "last sync failed"
-      : latest
-        ? `synced ${timeAgo(latest.finished_at)}`
+      : status
+        ? `synced ${timeAgo(status.finished_at)}`
         : "not synced yet";
 
   return (
     <div className="flex items-center gap-3 text-sm">
-      <span className={`hidden sm:inline ${latest?.status === "error" ? "text-rose-600" : "text-zinc-500"}`}>
+      <span className={`hidden sm:inline ${status?.status === "error" ? "text-rose-600" : "text-zinc-500"}`}>
         {last}
       </span>
       <button

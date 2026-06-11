@@ -5,14 +5,14 @@ import { isSyncing, latestSyncRun, runSync, type SyncKind } from "@/lib/sync/syn
 export const dynamic = "force-dynamic";
 
 /**
- * Authorize a sync trigger. Same-origin browser requests (the "Sync now" button)
- * are always allowed. External callers (e.g. a cron job) must present SYNC_SECRET
- * via the `x-sync-secret` header when that env var is configured.
+ * Authorize a sync trigger. This HTTP endpoint exists for external callers (e.g. a
+ * cron job) — the in-app "Sync now" button uses a Server Action and never reaches here.
+ * When SYNC_SECRET is configured, callers must present it via the `x-sync-secret` header;
+ * otherwise the endpoint is open (suitable for localhost-only setups).
  */
 function authorized(request: Request): boolean {
   const secret = process.env.SYNC_SECRET;
-  if (request.headers.get("sec-fetch-site") === "same-origin") return true;
-  if (!secret) return true; // no secret configured -> open (suitable for localhost)
+  if (!secret) return true;
   return request.headers.get("x-sync-secret") === secret;
 }
 

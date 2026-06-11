@@ -43,7 +43,6 @@ export function runSync(kind: SyncKind = "incremental"): Promise<SyncResult> {
 
 async function doSync(kind: SyncKind): Promise<SyncResult> {
   const startedAt = Date.now();
-  const up = new UpClient();
 
   const row = await queryOne<{ id: bigint | number }>(
     `INSERT INTO sync_runs (kind, status, started_at) VALUES (?, 'running', now()) RETURNING id`,
@@ -54,6 +53,9 @@ async function doSync(kind: SyncKind): Promise<SyncResult> {
   const counts = { accounts: 0, categories: 0, tags: 0, transactions: 0, attachments: 0 };
 
   try {
+    // Constructed inside the try so a missing/invalid token yields a clean error
+    // result (and a recorded sync_runs row) rather than an unhandled rejection.
+    const up = new UpClient();
     await up.ping();
 
     for await (const account of up.listAccounts()) {

@@ -43,8 +43,12 @@ through a Next.js web UI. Your financial data never leaves your machine.
 | --- | --- |
 | `npm run sync` | Incremental sync — re-fetches the last 30 days (catches `HELD → SETTLED` changes, edits) |
 | `npm run sync -- --full` | Full backfill of all history |
-| **"Sync now"** button | Incremental sync via `POST /api/sync` (runs inside the server process) |
-| **"Full"** button | Full backfill via `POST /api/sync?kind=full` |
+| **"Sync now"** button | Incremental sync via a Next.js **Server Action** (runs inside the server process) |
+| **"Full"** button | Full backfill via the same Server Action |
+
+The in-app buttons call a server-side function directly through Next.js's built-in, same-origin
+Server Action channel — so they work regardless of `SYNC_SECRET` (that secret only guards the public
+`POST /api/sync` HTTP endpoint, which exists for external callers like cron).
 
 **Important:** the CLI (`npm run sync`) opens the DuckDB file directly, so only run it while the dev/prod
 server is stopped. While the server is running, sync through the buttons or the API endpoint instead —
@@ -117,6 +121,30 @@ The same cron + `curl` recipe above schedules incremental syncs against the cont
 > - Building for a different CPU architecture (e.g. amd64 from an Apple-Silicon host):
 >   `docker build --platform linux/amd64 -t up-warehouse .` — the correct DuckDB native binding
 >   is fetched automatically for the target platform during the in-container `npm ci`.
+
+### Published images (GitHub Container Registry)
+
+[`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) builds a
+**multi-arch image (`linux/amd64` + `linux/arm64`)** with Buildx + QEMU and publishes it to
+**GHCR** on every push to `main` and on `v*.*.*` tags. It authenticates with the built-in
+`GITHUB_TOKEN` — **no Docker Hub account or extra secrets required** — and attaches a signed
+SLSA build-provenance attestation to each image.
+
+Tags produced: `latest` (default branch), the branch name, `sha-<commit>`, and semver
+(`1.2.3`, `1.2`) when you push a `v1.2.3` tag.
+
+Pull and run the published image (replace `OWNER` with your GitHub user/org):
+
+```bash
+docker run -d --name up-warehouse \
+  -p 3000:3000 \
+  --env-file .env.local \
+  -v "$(pwd)/data:/app/data" \
+  ghcr.io/OWNER/up-report:latest
+```
+
+The package is private by default — `docker login ghcr.io` (with a PAT that has `read:packages`)
+to pull, or make it public under the repository's **Packages** settings.
 
 ## What's stored
 

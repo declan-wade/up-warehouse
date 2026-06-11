@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SyncButton } from "./SyncButton";
+import { latestSyncRun } from "@/lib/sync/sync";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -7,7 +8,8 @@ const links = [
   { href: "/accounts", label: "Accounts" },
 ];
 
-export function Nav() {
+export async function Nav() {
+  const status = await latestSyncRun();
   return (
     <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
@@ -30,7 +32,7 @@ export function Nav() {
             ))}
           </nav>
         </div>
-        <SyncButton />
+        <SyncButton initialStatus={status} />
       </div>
     </header>
   );
